@@ -22,6 +22,7 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     let (points, scalars) =
         util::generate_points_scalars::<G1Affine>(1usize << npoints_npow);
+    let npoints = points.len();
 
     let mut group = c.benchmark_group("CUDA");
     group.sample_size(20);
@@ -34,6 +35,23 @@ fn criterion_benchmark(c: &mut Criterion) {
                     scalars.as_slice(),
                 )
             });
+        })
+    });
+
+    let context = multi_scalar_mult_arkworks_init(&points.as_slice(), npoints);
+
+    let name = format!("preallocated 2**{}", npoints_npow);
+    group.bench_function(name, |b| {
+        b.iter(|| {
+            let _ = multi_scalar_mult_arkworks_with::<G1Affine>(
+                &context,
+                npoints,
+                unsafe {
+                    std::mem::transmute::<&[_], &[BigInteger256]>(
+                        scalars.as_slice(),
+                    )
+                },
+            );
         })
     });
 
@@ -50,18 +68,37 @@ fn criterion_benchmark_fp2(c: &mut Criterion) {
 
     let (points, scalars) =
         util::generate_points_scalars::<G2Affine>(1usize << npoints_npow);
+    let npoints = points.len();
 
     let mut group = c.benchmark_group("CUDA");
     group.sample_size(10);
 
-    let name = format!("2**{}", npoints_npow);
+    let name = format!("fp2 2**{}", npoints_npow);
     group.bench_function(name, |b| {
         b.iter(|| {
-            let _ = multi_scalar_mult_fp2_arkworks(&points.as_slice(), unsafe {
-                std::mem::transmute::<&[_], &[BigInteger256]>(
-                    scalars.as_slice(),
-                )
-            });
+            let _ =
+                multi_scalar_mult_fp2_arkworks(&points.as_slice(), unsafe {
+                    std::mem::transmute::<&[_], &[BigInteger256]>(
+                        scalars.as_slice(),
+                    )
+                });
+        })
+    });
+
+    let context = multi_scalar_mult_arkworks_init(&points.as_slice(), npoints);
+
+    let name = format!("preallocated fp2 2**{}", npoints_npow);
+    group.bench_function(name, |b| {
+        b.iter(|| {
+            let _ = multi_scalar_mult_fp2_arkworks_with::<G2Affine>(
+                &context,
+                npoints,
+                unsafe {
+                    std::mem::transmute::<&[_], &[BigInteger256]>(
+                        scalars.as_slice(),
+                    )
+                },
+            );
         })
     });
 

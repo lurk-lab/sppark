@@ -38,6 +38,34 @@ fn msm_correctness() {
     assert_eq!(msm_result, arkworks_result);
 }
 
+#[test]
+fn preallocated_msm_correctness() {
+    let test_npow = std::env::var("TEST_NPOW").unwrap_or("15".to_string());
+    let npoints_npow = i32::from_str(&test_npow).unwrap();
+
+    let (points, scalars) =
+        util::generate_points_scalars::<G1Affine>(1usize << npoints_npow);
+    let npoints = points.len();
+
+    let context = multi_scalar_mult_arkworks_init(&points.as_slice(), npoints);
+    let msm_result = multi_scalar_mult_arkworks_with::<G1Affine>(
+        &context,
+        npoints,
+        unsafe {
+            std::mem::transmute::<&[_], &[BigInteger256]>(scalars.as_slice())
+        },
+    )
+    .into_affine();
+
+    let arkworks_result =
+        VariableBaseMSM::multi_scalar_mul(points.as_slice(), unsafe {
+            std::mem::transmute::<&[_], &[BigInteger256]>(scalars.as_slice())
+        })
+        .into_affine();
+
+    assert_eq!(msm_result, arkworks_result);
+}
+
 #[cfg(any(feature = "bls12_381", feature = "bls12_377"))]
 #[test]
 fn msm_fp2_correctness() {
@@ -52,6 +80,36 @@ fn msm_fp2_correctness() {
             std::mem::transmute::<&[_], &[BigInteger256]>(scalars.as_slice())
         })
         .into_affine();
+
+    let arkworks_result =
+        VariableBaseMSM::multi_scalar_mul(points.as_slice(), unsafe {
+            std::mem::transmute::<&[_], &[BigInteger256]>(scalars.as_slice())
+        })
+        .into_affine();
+
+    assert_eq!(msm_result, arkworks_result);
+}
+
+#[cfg(any(feature = "bls12_381", feature = "bls12_377"))]
+#[test]
+fn preallocated_msm_fp2_correctness() {
+    let test_npow = std::env::var("TEST_NPOW").unwrap_or("14".to_string());
+    let npoints_npow = i32::from_str(&test_npow).unwrap();
+
+    let (points, scalars) =
+        util::generate_points_scalars::<G2Affine>(1usize << npoints_npow);
+    let npoints = points.len();
+
+    let context =
+        multi_scalar_mult_fp2_arkworks_init(&points.as_slice(), npoints);
+    let msm_result = multi_scalar_mult_fp2_arkworks_with::<G2Affine>(
+        &context,
+        npoints,
+        unsafe {
+            std::mem::transmute::<&[_], &[BigInteger256]>(scalars.as_slice())
+        },
+    )
+    .into_affine();
 
     let arkworks_result =
         VariableBaseMSM::multi_scalar_mul(points.as_slice(), unsafe {
