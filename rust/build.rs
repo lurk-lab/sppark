@@ -35,6 +35,10 @@ fn main() {
         );
         println!(
             "cargo:rerun-if-changed={}",
+            base_dir.join("spmvm").to_string_lossy()
+        );
+        println!(
+            "cargo:rerun-if-changed={}",
             base_dir.join("util").to_string_lossy()
         );
     }
