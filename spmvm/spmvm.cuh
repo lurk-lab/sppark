@@ -274,7 +274,7 @@ public:
         }
     }
 
-    RustError invoke_witness_with(const witness_t<scalar_t> *witness, scalar_t out[], size_t nthreads)
+    RustError invoke_witness_with(const witness_t<scalar_t> *witness, scalar_t out[], size_t nblocks, size_t nthreads)
     {
         assert(witness->nW + witness->nU + 1 == num_cols);
 
@@ -287,7 +287,7 @@ public:
                 gpu[2].HtoD(&d_scalars[witness->nW + 1], &witness->U[0], witness->nU);
 
             cudaMemsetAsync(&d_out[0], 0, num_rows * sizeof(scalar_t), gpu[2]);
-            csr_vector_mul<scalar_t><<<gpu.sm_count(), nthreads, 0, gpu[2]>>>(&d_data[0], &d_col_idx[0], &d_row_ptr[0],
+            csr_vector_mul<scalar_t><<<nblocks, nthreads, 0, gpu[2]>>>(&d_data[0], &d_col_idx[0], &d_row_ptr[0],
                                                                               num_rows, &d_scalars[0], &d_out[0]);
             CUDA_OK(cudaGetLastError());
 
@@ -372,12 +372,12 @@ static RustError sparse_matrix_witness(
 template <typename scalar_t>
 static RustError sparse_matrix_witness_with(
     spmvm_context_t<scalar_t> *spmvm_context, const witness_t<scalar_t> *witness,
-    scalar_t out[], size_t nthreads)
+    scalar_t out[], size_t nblocks, size_t nthreads)
 {
     try
     {
         spmvm_t<scalar_t> spmvm{nullptr, spmvm_context};
-        return spmvm.invoke_witness_with(witness, out, nthreads);
+        return spmvm.invoke_witness_with(witness, out, nblocks, nthreads);
     }
     catch (const cuda_error &e)
     {
