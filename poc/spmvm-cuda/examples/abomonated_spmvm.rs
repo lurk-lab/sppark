@@ -9,7 +9,7 @@ use pasta_curves::{
     group::ff::{Field, PrimeField},
     pallas,
 };
-use pasta_msm::{
+use spmvm_cuda::{
     spmvm::{
         pallas::{
             sparse_matrix_witness_init_pallas,
@@ -225,7 +225,7 @@ fn r1cs_shape_statistics(
 fn main() {
     #[cfg(feature = "cuda")]
     if unsafe { cuda_available() } {
-        unsafe { pasta_msm::CUDA_OFF = false };
+        unsafe { spmvm_cuda::CUDA_OFF = false };
     }
 
     let r1cs_primary =

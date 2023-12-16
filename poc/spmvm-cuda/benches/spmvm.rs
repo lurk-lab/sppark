@@ -16,7 +16,7 @@ use pasta_curves::{
     group::ff::{Field, PrimeField},
     pallas,
 };
-use pasta_msm::{
+use spmvm_cuda::{
     self,
     spmvm::{
         pallas::{
@@ -98,7 +98,7 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     #[cfg(feature = "cuda")]
     {
-        unsafe { pasta_msm::CUDA_OFF = true };
+        unsafe { spmvm_cuda::CUDA_OFF = true };
     }
 
     // let mut group = c.benchmark_group("CPU");
@@ -114,7 +114,7 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     #[cfg(feature = "cuda")]
     if unsafe { cuda_available() } {
-        unsafe { pasta_msm::CUDA_OFF = false };
+        unsafe { spmvm_cuda::CUDA_OFF = false };
 
         let mut group = c.benchmark_group("GPU");
         group.sample_size(20);

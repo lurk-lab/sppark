@@ -10,16 +10,7 @@ use super::{CudaSparseMatrix, CudaWitness};
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct SpMVMContextPallas {
-    pub d_data: *const c_void,
-    pub d_col_idx: *const c_void,
-    pub d_row_ptr: *const c_void,
-
-    pub num_rows: usize,
-    pub num_cols: usize,
-    pub nnz: usize,
-
-    pub d_scalars: *const c_void,
-    pub d_out: *const c_void,
+    pub d_context: *const c_void,
 }
 
 unsafe impl Send for SpMVMContextPallas {}
@@ -28,14 +19,7 @@ unsafe impl Sync for SpMVMContextPallas {}
 impl Default for SpMVMContextPallas {
     fn default() -> Self {
         Self {
-            d_data: core::ptr::null(),
-            d_col_idx: core::ptr::null(),
-            d_row_ptr: core::ptr::null(),
-            num_rows: 0,
-            num_cols: 0,
-            nnz: 0,
-            d_scalars: core::ptr::null(),
-            d_out: core::ptr::null(),
+            d_context: core::ptr::null(),
         }
     }
 }
@@ -50,16 +34,7 @@ impl Drop for SpMVMContextPallas {
             drop_spmvm_context_pallas(std::mem::transmute::<&_, &_>(self))
         };
 
-        self.d_data = core::ptr::null();
-        self.d_col_idx = core::ptr::null();
-        self.d_row_ptr = core::ptr::null();
-
-        self.num_rows = 0;
-        self.num_cols = 0;
-        self.nnz = 0;
-
-        self.d_scalars = core::ptr::null();
-        self.d_out = core::ptr::null();
+        self.d_context = core::ptr::null();
     }
 }
 
@@ -167,12 +142,6 @@ pub fn sparse_matrix_witness_with_pallas(
             nthreads: usize,
         ) -> sppark::Error;
     }
-
-    assert_eq!(
-        witness.nW + witness.nU + 1,
-        context.num_cols,
-        "invalid witness size"
-    );
 
     let err = unsafe {
         cuda_sparse_matrix_witness_with_pallas(

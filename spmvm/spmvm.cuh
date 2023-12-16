@@ -136,19 +136,19 @@ public:
         this->owned = true;
 
         // setup on host side
-        this->context = malloc(sizeof(spmvm_context_t<scalar_t>));
-        context->d_data = reinterpret_cast<decltype(scalar_t *)>(gpu.Dmalloc(nnz * sizeof(scalar_t)));
-        context->d_col_idx = reinterpret_cast<decltype(size_t *)>(gpu.Dmalloc(nnz * sizeof(size_t)));
-        context->d_row_ptr = reinterpret_cast<decltype(size_t *)>(gpu.Dmalloc((num_rows + 1) * sizeof(size_t)));
+        this->context = reinterpret_cast<spmvm_context_t<scalar_t> *>(malloc(sizeof(spmvm_context_t<scalar_t>)));
+        context->d_data = reinterpret_cast<scalar_t *>(gpu.Dmalloc(nnz * sizeof(scalar_t)));
+        context->d_col_idx = reinterpret_cast<size_t *>(gpu.Dmalloc(nnz * sizeof(size_t)));
+        context->d_row_ptr = reinterpret_cast<size_t *>(gpu.Dmalloc((num_rows + 1) * sizeof(size_t)));
         context->num_rows = num_rows;
         context->num_cols = num_cols;
         context->nnz = nnz;
-        context->d_scalars = reinterpret_cast<decltype(scalar_t *)>(gpu.Dmalloc(num_cols * sizeof(scalar_t)));
-        context->d_out = reinterpret_cast<decltype(scalar_t *)>(gpu.Dmalloc(num_rows * sizeof(scalar_t)));
+        context->d_scalars = reinterpret_cast<scalar_t *>(gpu.Dmalloc(num_cols * sizeof(scalar_t)));
+        context->d_out = reinterpret_cast<scalar_t *>(gpu.Dmalloc(num_rows * sizeof(scalar_t)));
 
         // copy over to device
-        cudaMallocAsync(this->d_context, sizeof(spmvm_context_t<scalar_t>), gpu[2]);
-        cudaMemcpyAsync(this->d_context, context, sizeof(spmvm_context_t<scalar_t>), cudaMemcpyHostToDevice, gpu[2]);
+        this->d_context = reinterpret_cast<spmvm_context_t<scalar_t> *>(gpu.Dmalloc(sizeof(spmvm_context_t<scalar_t>)));
+        gpu[2].HtoD(&this->d_context[0], &context[0], 1);
     }
     spmvm_t(spmvm_host_t<scalar_t> *csr, spmvm_context_t<scalar_t> *spmvm_context, int device_id = -1) : gpu(select_gpu(device_id))
     {
@@ -156,19 +156,19 @@ public:
         if (csr)
         {
             // setup on host side
-            this->context = malloc(sizeof(spmvm_context_t<scalar_t>));
-            context->d_data = reinterpret_cast<decltype(scalar_t *)>(gpu.Dmalloc(nnz * sizeof(scalar_t)));
-            context->d_col_idx = reinterpret_cast<decltype(size_t *)>(gpu.Dmalloc(nnz * sizeof(size_t)));
-            context->d_row_ptr = reinterpret_cast<decltype(size_t *)>(gpu.Dmalloc((num_rows + 1) * sizeof(size_t)));
-            context->num_rows = num_rows;
-            context->num_cols = num_cols;
-            context->nnz = nnz;
-            context->d_scalars = reinterpret_cast<decltype(scalar_t *)>(gpu.Dmalloc(num_cols * sizeof(scalar_t)));
-            context->d_out = reinterpret_cast<decltype(scalar_t *)>(gpu.Dmalloc(num_rows * sizeof(scalar_t)));
+            this->context = reinterpret_cast<spmvm_context_t<scalar_t> *>(malloc(sizeof(spmvm_context_t<scalar_t>)));
+            context->d_data = reinterpret_cast<scalar_t *>(gpu.Dmalloc(csr->nnz * sizeof(scalar_t)));
+            context->d_col_idx = reinterpret_cast<size_t *>(gpu.Dmalloc(csr->nnz * sizeof(size_t)));
+            context->d_row_ptr = reinterpret_cast<size_t *>(gpu.Dmalloc((csr->num_rows + 1) * sizeof(size_t)));
+            context->num_rows = csr->num_rows;
+            context->num_cols = csr->num_cols;
+            context->nnz = csr->nnz;
+            context->d_scalars = reinterpret_cast<scalar_t *>(gpu.Dmalloc(csr->num_cols * sizeof(scalar_t)));
+            context->d_out = reinterpret_cast<scalar_t *>(gpu.Dmalloc(csr->num_rows * sizeof(scalar_t)));
 
             // copy over to device, while passing the context out
-            cudaMallocAsync(spmvm_context, sizeof(spmvm_context_t<scalar_t>), gpu[2]);
-            cudaMemcpyAsync(spmvm_context, context, sizeof(spmvm_context_t<scalar_t>), cudaMemcpyHostToDevice, gpu[2]);
+            spmvm_context = reinterpret_cast<spmvm_context_t<scalar_t> *>(gpu.Dmalloc(sizeof(spmvm_context_t<scalar_t>)));
+            gpu[2].HtoD(&spmvm_context[0], &context[0], 1);
 
             // move data into allocated memory
             if (csr->data)
@@ -177,6 +177,9 @@ public:
                 gpu[2].HtoD(&context->d_col_idx[0], &csr->col_idx[0], csr->nnz);
             if (csr->row_ptr)
                 gpu[2].HtoD(&context->d_row_ptr[0], &csr->row_ptr[0], csr->num_rows + 1);
+        } else {
+            this->context = reinterpret_cast<spmvm_context_t<scalar_t> *>(malloc(sizeof(spmvm_context_t<scalar_t>)));
+            gpu[2].DtoH(&context[0], &spmvm_context[0], 1);
         }
 
         this->owned = false;
@@ -196,6 +199,8 @@ public:
         if (context->d_out && owned)
             gpu.Dfree(context->d_out);
 
+        if (context)
+            free(context);
         if (d_context)
             gpu.Dfree(d_context);
     }
@@ -284,7 +289,7 @@ public:
 
     RustError invoke_witness_with(const witness_t<scalar_t> *witness, scalar_t out[], size_t nblocks, size_t nthreads)
     {
-        assert(witness->nW + witness->nU + 1 == num_cols);
+        assert(witness->nW + witness->nU + 1 == context->num_cols);
 
         try
         {
@@ -298,7 +303,7 @@ public:
             csr_vector_mul<scalar_t><<<nblocks, nthreads, 0, gpu[2]>>>(d_context);
             CUDA_OK(cudaGetLastError());
 
-            gpu[2].DtoH(&out[0], &context->d_out[0], num_rows);
+            gpu[2].DtoH(&out[0], &context->d_out[0], context->num_rows);
             gpu.sync();
 
             return RustError{cudaSuccess};
@@ -315,9 +320,9 @@ public:
     }
 
     RustError invoke_witness_with_buckets(const witness_t<scalar_t> *witness, scalar_t out[],
-                                          const buckets_t *buckets, nblocks, size_t nthreads)
+                                          const buckets_t *buckets, size_t nblocks, size_t nthreads)
     {
-        assert(witness->nW + witness->nU + 1 == num_cols);
+        assert(witness->nW + witness->nU + 1 == context->num_cols);
 
         try
         {
@@ -327,11 +332,11 @@ public:
             if (witness->U)
                 gpu[2].HtoD(&context->d_scalars[witness->nW + 1], &witness->U[0], witness->nU);
 
-            cudaMemsetAsync(&context->d_out[0], 0, num_rows * sizeof(scalar_t), gpu[2]);
+            cudaMemsetAsync(&context->d_out[0], 0, context->num_rows * sizeof(scalar_t), gpu[2]);
             csr_vector_mul<scalar_t><<<nblocks, nthreads, 0, gpu[2]>>>(d_context);
             CUDA_OK(cudaGetLastError());
 
-            gpu[2].DtoH(&out[0], &context->d_out[0], num_rows);
+            gpu[2].DtoH(&out[0], &context->d_out[0], context->num_rows);
             gpu.sync();
 
             return RustError{cudaSuccess};
