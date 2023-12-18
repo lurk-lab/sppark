@@ -9,11 +9,16 @@
 #include <cooperative_groups.h>
 #include <cassert>
 
+#include <iostream>
+#include <chrono>
+
 #include <util/vec2d_t.hpp>
 #include <util/slice_t.hpp>
 
 #include "sort.cuh"
 #include "batch_addition.cuh"
+
+using namespace std::chrono;
 
 #ifndef WARP_SZ
 #define WARP_SZ 32
@@ -548,10 +553,18 @@ public:
             size_t num = stride > npoints ? npoints : stride;
             event_t ev;
 
+            auto digits_start = system_clock::now();
+
             if (scalars)
                 gpu[2].HtoD(&d_scalars[d_off], &scalars[h_off], num);
             digits(&d_scalars[0], num, d_digits, d_temps, mont);
             gpu[2].record(ev);
+
+            gpu[2].sync();
+            auto digits_end = system_clock::now();
+            std::cout
+                << "digits 0: " << (digits_end - digits_start) / 1us << "us"
+                << std::endl;
 
             if (points)
                 gpu[0].HtoD(&d_points[d_off], &points[h_off],
@@ -559,6 +572,8 @@ public:
 
             for (uint32_t i = 0; i < batch; i++)
             {
+                auto batch_start = system_clock::now();
+
                 gpu[i & 1].wait(ev);
 
                 batch_addition<bucket_t><<<gpu.sm_count(), BATCH_ADD_BLOCK_SIZE,
@@ -567,16 +582,34 @@ public:
                     &d_digits[0][0], d_hist[0][0]);
                 CUDA_OK(cudaGetLastError());
 
+                gpu[i & 1].sync();
+                auto batch_addition = system_clock::now();
+                std::cout
+                    << "batch_addition " << i << ": " << (batch_addition - batch_start) / 1us << "us"
+                    << std::endl;
+
                 gpu[i & 1].launch_coop(accumulate<bucket_t, affine_h>,
                                        {gpu.sm_count(), 0},
                                        d_buckets, nwins, wbits, &d_points[d_off], d_digits, d_hist, i & 1);
                 gpu[i & 1].record(ev);
+
+                gpu[i & 1].sync();
+                auto accumulate = system_clock::now();
+                std::cout
+                    << "accumulate " << i << ": " << (accumulate - batch_addition) / 1us << "us"
+                    << std::endl;
 
                 integrate<bucket_t><<<nwins, MSM_NTHREADS,
                                       sizeof(bucket_t) * MSM_NTHREADS / bucket_t::degree,
                                       gpu[i & 1]>>>(
                     d_buckets, nwins, wbits, scalar_t::bit_length());
                 CUDA_OK(cudaGetLastError());
+                
+                gpu[i & 1].sync();
+                auto integrate = system_clock::now();
+                std::cout
+                    << "integrate " << i << ": " << (integrate - accumulate) / 1us << "us"
+                    << std::endl;
 
                 if (i < batch - 1)
                 {
@@ -589,6 +622,12 @@ public:
                     digits(&d_scalars[scalars ? 0 : h_off], num,
                            d_digits, d_temps, mont);
                     gpu[2].record(ev);
+
+                    gpu[2].sync();
+                    auto digits = system_clock::now();
+                    std::cout
+                        << "digits " << i + 1 << ": " << (digits - integrate) / 1us << "us"
+                        << std::endl;
 
                     if (points)
                     {

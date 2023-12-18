@@ -153,7 +153,7 @@ impl<F: PrimeField> SparseMatrix<F> {
         }
     }
 
-    pub fn random(rows: usize, cols: usize, nnz: usize) -> Self {
+    pub fn random(rows: usize, cols: usize, nnz: usize, sd: usize) -> Self {
         let mut rng = thread_rng();
 
         let mut data = Vec::new();
@@ -162,10 +162,15 @@ impl<F: PrimeField> SparseMatrix<F> {
         indptr.push(0);
 
         let avg = nnz / rows;
-        let range = if avg >= 2 { avg - 2..avg + 2 } else { 0..2 };
+        let range = if avg >= 2 { avg - sd..avg + sd } else { 0..sd };
 
         for _ in 0..rows {
-            let num_elements = rng.gen_range(range.clone()); // Random number of elements between 5 to 10
+            let num_elements = if sd == 0 {
+                avg
+            } else {
+                // Random number of elements between (avg-sd)..(abg+sd)
+                rng.gen_range(range.clone())
+            };
             for _ in 0..num_elements {
                 data.push(F::random(&mut rng)); // Random data value
                 indices.push(rng.gen_range(0..cols)); // Random column index
@@ -199,10 +204,7 @@ impl<F: PrimeField> SparseMatrix<F> {
             data.push(self.rows());
         }
 
-        Buckets {
-            data,
-            width,
-        }
+        Buckets { data, width }
     }
 
     pub fn multiply_with_buckets(&self, vector: &[F], width: usize) -> Vec<F> {
@@ -346,7 +348,7 @@ pub fn gen_scalars(npoints: usize) -> Vec<pallas::Scalar> {
     ret
 }
 
-#[cfg(test)] 
+#[cfg(test)]
 mod test {
     use pasta_curves::pallas;
 
@@ -354,8 +356,10 @@ mod test {
 
     #[test]
     fn test_buckets() {
-        let csr = SparseMatrix::<pallas::Scalar>::random(200, 100, 2000);
-        let vector = (0..100).map(|i| pallas::Scalar::from(i)).collect::<Vec<_>>();
+        let csr = SparseMatrix::<pallas::Scalar>::random(200, 100, 2000, 2);
+        let vector = (0..100)
+            .map(|i| pallas::Scalar::from(i))
+            .collect::<Vec<_>>();
 
         let res = csr.multiply_vec(&vector);
         let bucket_res = csr.multiply_with_buckets(&vector, 200);

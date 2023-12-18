@@ -8,6 +8,9 @@
 #include <cuda.h>
 #include <cassert>
 
+#include <iostream>
+#include <chrono>
+
 #ifndef WARP_SZ
 #define WARP_SZ 32
 #endif
@@ -16,6 +19,8 @@
 #else
 #define asm asm volatile
 #endif
+
+using namespace std::chrono;
 
 template <typename scalar_t>
 class spmvm_t;
@@ -287,10 +292,13 @@ public:
 
     RustError invoke_witness_with(const witness_t<scalar_t> *witness, scalar_t out[], size_t nblocks, size_t nthreads)
     {
+        std::cout << ">>> invoke_witness_with" << std::endl;
         assert(witness->nW + witness->nU + 1 == context->num_cols);
 
         try
         {
+            auto start = system_clock::now();
+
             if (witness->W)
                 gpu[2].HtoD(&context->d_scalars[0], &witness->W[0], witness->nW);
             gpu[2].HtoD(&context->d_scalars[witness->nW], witness->u, 1);
@@ -300,11 +308,27 @@ public:
             spmvm_context_t<scalar_t> *d_context = reinterpret_cast<spmvm_context_t<scalar_t> *>(gpu[2].Dmalloc(sizeof(spmvm_context_t<scalar_t>)));
             gpu[2].HtoD(d_context, context, 1);
             cudaMemsetAsync(&context->d_out[0], 0, context->num_rows * sizeof(scalar_t), gpu[2]);
+
+            auto load = system_clock::now();
+            std::cout
+                << "load: " << (load - start).count() << "s"
+                << std::endl;
+
             csr_vector_mul<scalar_t><<<nblocks, nthreads, 0, gpu[2]>>>(d_context);
             CUDA_OK(cudaGetLastError());
+            
+            auto compute = system_clock::now();
+            std::cout
+                << "csr_vector_mul: " << (compute - load).count() << "s"
+                << std::endl;
 
             gpu[2].DtoH(&out[0], &context->d_out[0], context->num_rows);
             gpu.sync();
+
+            auto end = system_clock::now();
+            std::cout
+                << "unload: " << (end - compute).count() << "s"
+                << std::endl;
 
             return RustError{cudaSuccess};
         }
