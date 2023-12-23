@@ -387,20 +387,20 @@ class msm_t
     }
 
 public:
-    msm_t(const affine_t points[], size_t np, bool owned,
+    msm_t(const affine_t points[], size_t np, size_t nnz, bool owned,
           size_t ffi_affine_sz = sizeof(affine_t), int device_id = -1)
         : owned(owned), gpu(select_gpu(device_id)), d_points(nullptr), d_scalars(nullptr)
     {
         npoints = (np + WARP_SZ - 1) & ((size_t)0 - WARP_SZ);
 
         wbits = 17;
-        if (npoints > 192)
+        if (nnz > 192)
         {
-            wbits = std::min(lg2(npoints + npoints / 2) - 8, 18);
+            wbits = std::min(lg2(nnz + nnz / 2) - 8, 18);
             if (wbits < 10)
                 wbits = 10;
         }
-        else if (npoints > 0)
+        else if (nnz > 0)
         {
             wbits = 10;
         }
@@ -800,7 +800,7 @@ static RustError mult_pippenger_init(const affine_t points[], size_t npoints,
 {
     try
     {
-        msm_t<bucket_t, point_t, affine_t, scalar_t> msm{points, npoints, false};
+        msm_t<bucket_t, point_t, affine_t, scalar_t> msm{points, npoints, 0, false};
         msm_context->d_points = msm.get_d_points();
         return RustError{cudaSuccess};
     }
@@ -815,13 +815,13 @@ static RustError mult_pippenger_init(const affine_t points[], size_t npoints,
 }
 
 template <class bucket_t, class point_t, class affine_t, class scalar_t>
-static RustError mult_pippenger(point_t *out, const affine_t points[], size_t npoints,
+static RustError mult_pippenger(point_t *out, const affine_t points[], size_t npoints, size_t nnz,
                                 const scalar_t scalars[], bool mont = true,
                                 size_t ffi_affine_sz = sizeof(affine_t))
 {
     try
     {
-        msm_t<bucket_t, point_t, affine_t, scalar_t> msm{nullptr, npoints, true};
+        msm_t<bucket_t, point_t, affine_t, scalar_t> msm{nullptr, npoints, nnz, true};
         return msm.invoke(*out, slice_t<affine_t>{points, npoints},
                           scalars, mont, ffi_affine_sz);
     }
@@ -839,13 +839,13 @@ static RustError mult_pippenger(point_t *out, const affine_t points[], size_t np
 template <class bucket_t, class point_t, class affine_t, class scalar_t,
           class affine_h = class affine_t::mem_t,
           class bucket_h = class bucket_t::mem_t>
-static RustError mult_pippenger_with(point_t *out, msm_context_t<affine_h> *msm_context, size_t npoints,
-                                     const scalar_t scalars[], bool mont = true,
+static RustError mult_pippenger_with(point_t *out, msm_context_t<affine_h> *msm_context, size_t npoints, 
+                                     size_t nnz, const scalar_t scalars[], bool mont = true,
                                      size_t ffi_affine_sz = sizeof(affine_t))
 {
     try
     {
-        msm_t<bucket_t, point_t, affine_t, scalar_t> msm{nullptr, npoints, false};
+        msm_t<bucket_t, point_t, affine_t, scalar_t> msm{nullptr, npoints, nnz, false};
         msm.set_d_points(msm_context->d_points);
         return msm.invoke(*out, nullptr, npoints,
                           scalars, mont, ffi_affine_sz);
