@@ -29,14 +29,11 @@ fn criterion_benchmark(c: &mut Criterion) {
     let name = format!("2**{}", npoints_npow);
     group.bench_function(name, |b| {
         b.iter(|| {
-            let _ = multi_scalar_mult_arkworks(
-                &points.as_slice(),
-                unsafe {
-                    std::mem::transmute::<&[_], &[BigInteger256]>(
-                        scalars.as_slice(),
-                    )
-                },
-            );
+            let _ = multi_scalar_mult_arkworks(&points.as_slice(), unsafe {
+                std::mem::transmute::<&[_], &[BigInteger256]>(
+                    scalars.as_slice(),
+                )
+            });
         })
     });
 
