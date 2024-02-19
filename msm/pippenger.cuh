@@ -766,16 +766,38 @@ private:
     }
 };
 
-template<class bucket_t, class point_t, class affine_t, class scalar_t> static
-RustError mult_pippenger(point_t *out, const affine_t points[], size_t npoints,
-                                       const scalar_t scalars[], bool mont = true,
-                                       size_t ffi_affine_sz = sizeof(affine_t))
-{
+template <typename T> struct msm_context_t {
+    T *d_points;
+    size_t npoints;
+};
+
+template <typename T> void drop_msm_context_t(msm_context_t<T> &ref) { CUDA_OK(cudaFree(ref.d_points)); }
+
+template <class bucket_t, class point_t, class affine_t, class scalar_t, class affine_h = class affine_t::mem_t,
+          class bucket_h = class bucket_t::mem_t>
+static RustError mult_pippenger_init(const affine_t points[], size_t npoints, msm_context_t<affine_h> *msm_context) {
     try {
-        msm_t<bucket_t, point_t, affine_t, scalar_t> msm{nullptr, npoints};
-        return msm.invoke(*out, slice_t<affine_t>{points, npoints},
-                                scalars, mont, ffi_affine_sz);
-    } catch (const cuda_error& e) {
+        msm_t<bucket_t, point_t, affine_t, scalar_t> msm{points, npoints, false};
+        msm_context->d_points = msm.get_d_points();
+        msm_context->npoints = npoints;
+        return RustError{cudaSuccess};
+    } catch (const cuda_error &e) {
+#ifdef TAKE_RESPONSIBILITY_FOR_ERROR_MESSAGE
+        return RustError{e.code(), e.what()};
+#else
+        return RustError{e.code()};
+#endif
+    }
+}
+
+template <class bucket_t, class point_t, class affine_t, class scalar_t>
+static RustError mult_pippenger(point_t *out, const affine_t points[], size_t npoints, const scalar_t scalars[],
+                                size_t nscalars, uint32_t pidx[], bool mont = true) {
+    try {
+        msm_t<bucket_t, point_t, affine_t, scalar_t> msm{nullptr, npoints, false};
+        // msm.setup_scratch(nscalars);
+        return msm.invoke(*out, points, npoints, scalars, nscalars, pidx, mont);
+    } catch (const cuda_error &e) {
         out->inf();
 #ifdef TAKE_RESPONSIBILITY_FOR_ERROR_MESSAGE
         return RustError{e.code(), e.what()};
@@ -784,4 +806,23 @@ RustError mult_pippenger(point_t *out, const affine_t points[], size_t npoints,
 #endif
     }
 }
+
+template <class bucket_t, class point_t, class affine_t, class scalar_t, class affine_h = class affine_t::mem_t,
+          class bucket_h = class bucket_t::mem_t>
+static RustError mult_pippenger_with(point_t *out, msm_context_t<affine_h> *msm_context, const scalar_t scalars[],
+                                     size_t nscalars, uint32_t pidx[], bool mont = true) {
+    try {
+        msm_t<bucket_t, point_t, affine_t, scalar_t> msm{msm_context->d_points, msm_context->npoints};
+        // msm.setup_scratch(nscalars);
+        return msm.invoke(*out, nullptr, msm_context->npoints, scalars, nscalars, pidx, mont);
+    } catch (const cuda_error &e) {
+        out->inf();
+#ifdef TAKE_RESPONSIBILITY_FOR_ERROR_MESSAGE
+        return RustError{e.code(), e.what()};
+#else
+        return RustError{e.code()};
+#endif
+    }
+}
+
 #endif
