@@ -532,10 +532,9 @@ public:
             d_points = (affine_h *)&d_total_blob[offset];
     }
 
-    RustError invoke(point_t& out, const affine_t* points_, size_t npoints,
-                                   const scalar_t* scalars, bool mont = true,
-                                   size_t ffi_affine_sz = sizeof(affine_t))
-    {
+    RustError invoke(point_t &out, const affine_t points[], size_t npoints, 
+                                   const scalar_t *scalars, size_t nscalars,
+                                   uint32_t pidx[], bool mont = true, size_t ffi_affine_sz = sizeof(affine_t)) {
         setup_scratch(points, npoints, nscalars, pidx);
 
         std::vector<result_t> res(nwins);
@@ -554,7 +553,7 @@ public:
                 gpu[2].HtoD(&d_scalars[d_off], &scalars[h_off], num);
             if (pidx)
                 gpu[2].HtoD(&d_pidx[0], &pidx[h_off], num);
-            digits(&d_scalars[0], num, d_digits, d_temps, mont);
+            digits(&d_scalars[0], num, d_digits, d_temps, mont, d_pidx);
             gpu[2].record(ev);
 
             if (points)
@@ -595,7 +594,7 @@ public:
 
                     gpu[2].wait(ev);
                     digits(&d_scalars[scalars ? 0 : h_off], num,
-                           d_digits, d_temps, mont);
+                           d_digits, d_temps, mont, d_pidx);
                     gpu[2].record(ev);
 
                     if (points) {
@@ -632,35 +631,35 @@ public:
         return RustError{cudaSuccess};
     }
 
-    RustError invoke(point_t& out, const affine_t* points, size_t npoints,
-                                   gpu_ptr_t<scalar_t> scalars, bool mont = true,
-                                   size_t ffi_affine_sz = sizeof(affine_t))
-    {
-        d_scalars = scalars;
-        return invoke(out, points, npoints, nullptr, mont, ffi_affine_sz);
-    }
+    // RustError invoke(point_t& out, const affine_t* points, size_t npoints,
+    //                                gpu_ptr_t<scalar_t> scalars, bool mont = true,
+    //                                size_t ffi_affine_sz = sizeof(affine_t))
+    // {
+    //     d_scalars = scalars;
+    //     return invoke(out, points, npoints, nullptr, mont, ffi_affine_sz);
+    // }
 
-    RustError invoke(point_t& out, vec_t<scalar_t> scalars, bool mont = true)
-    {   return invoke(out, nullptr, scalars.size(), scalars, mont);   }
+    // RustError invoke(point_t& out, vec_t<scalar_t> scalars, bool mont = true)
+    // {   return invoke(out, nullptr, scalars.size(), scalars, mont);   }
 
-    RustError invoke(point_t& out, vec_t<affine_t> points,
-                                   const scalar_t* scalars, bool mont = true,
-                                   size_t ffi_affine_sz = sizeof(affine_t))
-    {   return invoke(out, points, points.size(), scalars, mont, ffi_affine_sz);   }
+    // RustError invoke(point_t& out, vec_t<affine_t> points,
+    //                                const scalar_t* scalars, bool mont = true,
+    //                                size_t ffi_affine_sz = sizeof(affine_t))
+    // {   return invoke(out, points, points.size(), scalars, mont, ffi_affine_sz);   }
 
-    RustError invoke(point_t& out, vec_t<affine_t> points,
-                                   vec_t<scalar_t> scalars, bool mont = true,
-                                   size_t ffi_affine_sz = sizeof(affine_t))
-    {   return invoke(out, points, points.size(), scalars, mont, ffi_affine_sz);   }
+    // RustError invoke(point_t& out, vec_t<affine_t> points,
+    //                                vec_t<scalar_t> scalars, bool mont = true,
+    //                                size_t ffi_affine_sz = sizeof(affine_t))
+    // {   return invoke(out, points, points.size(), scalars, mont, ffi_affine_sz);   }
 
-    RustError invoke(point_t& out, const std::vector<affine_t>& points,
-                                   const std::vector<scalar_t>& scalars, bool mont = true,
-                                   size_t ffi_affine_sz = sizeof(affine_t))
-    {
-        return invoke(out, points.data(),
-                           std::min(points.size(), scalars.size()),
-                           scalars.data(), mont, ffi_affine_sz);
-    }
+    // RustError invoke(point_t& out, const std::vector<affine_t>& points,
+    //                                const std::vector<scalar_t>& scalars, bool mont = true,
+    //                                size_t ffi_affine_sz = sizeof(affine_t))
+    // {
+    //     return invoke(out, points.data(),
+    //                        std::min(points.size(), scalars.size()),
+    //                        scalars.data(), mont, ffi_affine_sz);
+    // }
 
 private:
     point_t integrate_row(const result_t& row, uint32_t lsbits)

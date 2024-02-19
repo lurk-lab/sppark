@@ -30,7 +30,7 @@ RustError::by_value mult_pippenger_inf(point_t* out, const affine_t points[],
                                        size_t npoints, const scalar_t scalars[],
                                        size_t ffi_affine_sz)
 {
-    return mult_pippenger<bucket_t>(out, points, npoints, scalars, false, ffi_affine_sz);
+    return mult_pippenger<bucket_t>(out, points, npoints, scalars, npoints, nullptr, false);
 }
 
 #if defined(FEATURE_BLS12_381) || defined(FEATURE_BLS12_377)
@@ -43,6 +43,7 @@ RustError::by_value mult_pippenger_fp2_inf(point_fp2_t* out, const affine_fp2_t 
                                            size_t npoints, const scalar_t scalars[],
                                            size_t ffi_affine_sz)
 {
-    return mult_pippenger<bucket_fp2_t>(out, points, npoints, scalars, false, ffi_affine_sz);
+    return mult_pippenger<bucket_fp2_t>(out, points, npoints, scalars, npoints, nullptr, false);
+
 }
 #endif
