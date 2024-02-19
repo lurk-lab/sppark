@@ -20,7 +20,8 @@
 __launch_bounds__(SORT_BLOCKDIM)
 __global__ void sort(vec2d_t<uint32_t> inouts, size_t len, uint32_t win,
                      vec2d_t<uint2> temps, vec2d_t<uint32_t> histograms,
-                     uint32_t wbits, uint32_t lsbits0, uint32_t lsbits1);
+                     uint32_t wbits, uint32_t lsbits0, uint32_t lsbits1,
+                     uint32_t *d_pidx);
 
 #ifndef __MSM_SORT_DONT_IMPLEMENT__
 
@@ -120,7 +121,7 @@ void scatter(uint2 dst[], const uint32_t src[], uint32_t base, uint32_t len,
 __device__
 static void upper_sort(uint2 dst[], const uint32_t src[], uint32_t len,
                        uint32_t lsbits, uint32_t bits, uint32_t digit,
-                       uint32_t histogram[])
+                       uint32_t histogram[], uint32_t pidx[] = nullptr)
 {
     uint32_t grid_div = 31 - __clz(gridDim.x);
     uint32_t grid_rem = (1<<grid_div) - 1;
@@ -209,7 +210,7 @@ static void upper_sort(uint2 dst[], const uint32_t src[], uint32_t len,
 
     __syncthreads();
 
-    scatter(dst, src, base, slice, lshift, digit, mask);
+    scatter(dst, src, base, slice, lshift, digit, mask, pidx);
 
     if (blockIdx.x == 0) {
         #pragma unroll 1
@@ -307,7 +308,7 @@ static void lower_sort(uint32_t dst[], const uint2 src[],
 
 __device__ __forceinline__
 void sort_row(uint32_t inout[], size_t len, uint2 temp[],
-              uint32_t histogram[], uint32_t wbits, uint32_t lsbits)
+              uint32_t histogram[], uint32_t wbits, uint32_t lsbits, uint32_t pidx[] = nullptr)
 {
     assert(len <= (1U<<31) && wbits <= 2*DIGIT_BITS && gridDim.x <= WARP_SZ);
 
@@ -322,7 +323,7 @@ void sort_row(uint32_t inout[], size_t len, uint2 temp[],
             top_bits = wbits - low_bits;
         }
 
-        upper_sort(temp, inout, len, lsbits, top_bits, low_bits, histogram);
+        upper_sort(temp, inout, len, lsbits, top_bits, low_bits, histogram, pidx);
 
         histogram += blockIdx.x<<low_bits;
 
@@ -359,18 +360,20 @@ void sort_row(uint32_t inout[], size_t len, uint2 temp[],
 #if 0
 __launch_bounds__(SORT_BLOCKDIM)
 __global__ void sort(uint32_t inout[], size_t len, uint2 temp[],
-                     uint32_t histogram[], uint32_t wbits, uint32_t lsbits)
-{   sort_row(inout, len, temp, histogram, wbits, lsbits);   }
+                     uint32_t histogram[], uint32_t wbits, uint32_t lsbits,
+                     uint32_t pidx[] = nullptr)
+{   sort_row(inout, len, temp, histogram, wbits, lsbits, pidx);   }
 #endif
 
 __launch_bounds__(SORT_BLOCKDIM)
 __global__ void sort(vec2d_t<uint32_t> inouts, size_t len, uint32_t win,
                      vec2d_t<uint2> temps, vec2d_t<uint32_t> histograms,
-                     uint32_t wbits, uint32_t lsbits0, uint32_t lsbits1)
+                     uint32_t wbits, uint32_t lsbits0, uint32_t lsbits1,
+                     uint32_t pidx[] = nullptr)
 {
     win += blockIdx.y;
     sort_row(inouts[win], len, temps[blockIdx.y], histograms[win],
-             wbits, blockIdx.y==0 ? lsbits0 : lsbits1);
+             wbits, blockIdx.y==0 ? lsbits0 : lsbits1, pidx);
 }
 
 # undef asm
