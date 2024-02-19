@@ -365,7 +365,7 @@ class msm_t {
 
 public:
     // Initialize the MSM by moving the points to the device
-    msm_t(const affine_t points[], size_t npoints, bool owned, int device_id = -1) : gpu(select_gpu(device_id)) {
+    msm_t(const affine_t points[], size_t npoints, bool owned, size_t ffi_affine_sz = sizeof(affine_t), int device_id = -1) : gpu(select_gpu(device_id)) {
         // set default values for fields
         this->d_points = nullptr;
         this->d_scalars = nullptr;
@@ -377,7 +377,7 @@ public:
 
         if (points) {
             d_points = reinterpret_cast<decltype(d_points)>(gpu.Dmalloc(npoints * sizeof(d_points[0])));
-            gpu.HtoD(d_points, points, npoints, sizeof(affine_h));
+            gpu.HtoD(d_points, points, npoints, ffi_affine_sz);
             CUDA_OK(cudaGetLastError());
         }
     }
@@ -460,7 +460,7 @@ private:
 public:
     // Compute various constants (stride length, window size) based on the number of scalars.
     // Also allocate scratch space.
-    void setup_scratch(const affine_t *&points, size_t npoints, size_t nscalars, uint32_t *pidx) {
+    void setup_scratch(const affine_t *&points, size_t npoints, size_t nscalars, uint32_t *pidx, size_t ffi_affine_sz = sizeof(affine_t)) {
         this->npoints = npoints;
         this->nscalars = nscalars;
 
@@ -473,7 +473,7 @@ public:
             // if both are not null, then we move all the points onto the GPU at once,
             // at a performance penalty
             d_points = reinterpret_cast<decltype(d_points)>(gpu.Dmalloc(npoints * sizeof(d_points[0])));
-            gpu.HtoD(d_points, points, npoints, sizeof(affine_h));
+            gpu.HtoD(d_points, points, npoints, ffi_affine_sz);
             CUDA_OK(cudaGetLastError());
             points = nullptr;
         }
@@ -532,10 +532,11 @@ public:
             d_points = (affine_h *)&d_total_blob[offset];
     }
 
-    RustError invoke(point_t &out, const affine_t points[], size_t npoints, 
+    RustError invoke(point_t &out, const affine_t points_[], size_t npoints, 
                                    const scalar_t *scalars, size_t nscalars,
                                    uint32_t pidx[], bool mont = true, size_t ffi_affine_sz = sizeof(affine_t)) {
-        setup_scratch(points, npoints, nscalars, pidx);
+        setup_scratch(points_, npoints, nscalars, pidx, ffi_affine_sz);
+        const char* points = reinterpret_cast<const char*>(points_);
 
         std::vector<result_t> res(nwins);
         std::vector<bucket_t> ones(gpu.sm_count() * BATCH_ADD_BLOCK_SIZE / WARP_SZ);
@@ -791,11 +792,11 @@ static RustError mult_pippenger_init(const affine_t points[], size_t npoints, ms
 
 template <class bucket_t, class point_t, class affine_t, class scalar_t>
 static RustError mult_pippenger(point_t *out, const affine_t points[], size_t npoints, const scalar_t scalars[],
-                                size_t nscalars, uint32_t pidx[], bool mont = true) {
+                                size_t nscalars, uint32_t pidx[], bool mont = true, size_t ffi_affine_sz = sizeof(affine_t)) {
     try {
         msm_t<bucket_t, point_t, affine_t, scalar_t> msm{nullptr, npoints, false};
         // msm.setup_scratch(nscalars);
-        return msm.invoke(*out, points, npoints, scalars, nscalars, pidx, mont);
+        return msm.invoke(*out, points, npoints, scalars, nscalars, pidx, mont, ffi_affine_sz);
     } catch (const cuda_error &e) {
         out->inf();
 #ifdef TAKE_RESPONSIBILITY_FOR_ERROR_MESSAGE
@@ -809,11 +810,11 @@ static RustError mult_pippenger(point_t *out, const affine_t points[], size_t np
 template <class bucket_t, class point_t, class affine_t, class scalar_t, class affine_h = class affine_t::mem_t,
           class bucket_h = class bucket_t::mem_t>
 static RustError mult_pippenger_with(point_t *out, msm_context_t<affine_h> *msm_context, const scalar_t scalars[],
-                                     size_t nscalars, uint32_t pidx[], bool mont = true) {
+                                     size_t nscalars, uint32_t pidx[], bool mont = true, size_t ffi_affine_sz = sizeof(affine_t)) {
     try {
         msm_t<bucket_t, point_t, affine_t, scalar_t> msm{msm_context->d_points, msm_context->npoints};
         // msm.setup_scratch(nscalars);
-        return msm.invoke(*out, nullptr, msm_context->npoints, scalars, nscalars, pidx, mont);
+        return msm.invoke(*out, nullptr, msm_context->npoints, scalars, nscalars, pidx, mont, ffi_affine_sz);
     } catch (const cuda_error &e) {
         out->inf();
 #ifdef TAKE_RESPONSIBILITY_FOR_ERROR_MESSAGE
