@@ -60,3 +60,5 @@ dkms.conf
 # Rust build 
 Cargo.lock
 target
+
+.vscode/
